@@ -98,13 +98,16 @@ function scheduler() {
 
 function updateKeys(event) {
     for (let i = 0; i < sounds.length; i++) {
-        if (sounds[i].key == event.key) {
+        let key = event.key;
+        if (event.key == 'z')
+            key = 'y';
+        if (sounds[i].key == key) {
             sounds[i].isOn = (event.type) == ("keydown")
         }
     }
 }
 
-// keyboard
+// keyboard drawing
 function isKeyOn(key, sounds) {
     for (let i = 0; i < sounds.length; i++) {
         if (sounds[i].key == key)
@@ -113,12 +116,17 @@ function isKeyOn(key, sounds) {
     return false;
 }
 
+var lastSounds;
+
 function draw(sounds) {
-    if (document.getElementById("svgKeyboard")) {
-        document.getElementById("svgKeyboard").remove();
+    if (JSON.stringify(lastSounds) !== JSON.stringify(sounds) ) { // draw only if sounds has changed 
+        if (document.getElementById("svgKeyboard")) {
+            document.getElementById("svgKeyboard").remove();
+        }
+        document.getElementById("keyboard").
+            appendChild(drawKeyboard(sounds));
     }
-    document.getElementById("keyboard").
-        appendChild(drawKeyboard(sounds));
+    lastSounds = JSON.parse(JSON.stringify(sounds)); // deep copy
     window.requestAnimationFrame(() => draw(sounds));
 }
 
