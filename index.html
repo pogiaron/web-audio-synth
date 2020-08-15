@@ -3,11 +3,41 @@
 <head>
     <meta charset="UTF-8">
     <title>Web Audio Synth</title>
+    <link rel="stylesheet" href="css/main.css">
     <script src="js/synth.js"></script>
 </head>
 <body>
     <button onclick="start()">Start</button>
     <div id="keyboard">
     </div>
+    <div>
+        <input type="radio" id="sin"
+         name="wave" value="sin" checked>
+        <label for="sin">
+     <pre>    _     _
+   / \   / \
+\_/   \_/   \_ </pre>
+    </label>
+    
+        <input type="radio" id="sawtooth"
+         name="wave" value="sawtooth">
+          <label class="c" for="sawtooth">
+            <pre> /| /| /|
+/ |/ |/ |
+            </pre>
+        </label>
+    
+        <input type="radio" id="triangle"
+         name="wave" value="triangle">
+        <label class="c" for="triangle"><pre> /\  /\  /\
+/  \/  \/  \</pre></label>
+        
+        <input type="radio" id="square"
+         name="wave" value="square">
+        <label for="square"> <pre>    __    __
+   |  |  |  |
+ __|  |__|  |__ </pre></label>
+      </div>
+    
 </body>
 </html>

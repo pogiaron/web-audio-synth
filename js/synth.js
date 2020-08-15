@@ -9,6 +9,15 @@ const bufferLength = 1 / 50 // buffer will last 1/50 sec
 const scheduleAheadTime = 0.08;    // How far ahead to schedule audio (sec)
 var timerWorker = null; // Web worker used to fire timer messages
 
+const waves = {
+    SIN: 'sin',
+    SAWTOOTH: 'sawtooth',
+    TRIANGLE: 'triangle',
+    SQUARE: 'square'
+}
+var selectedWave = waves.SIN;
+
+
 function nextBuffer() {
     nextBufferTime += bufferLength;
 }
@@ -19,8 +28,21 @@ function scheduleBuffer(time) {
     for (let i = 0; i < samples; i++) {
         let sample = 0;
         for (let i = 0; i < sounds.length; i++) {
-            let sinWaveAtT;
-            sinWaveAtT = Math.sin(sounds[i].freq * 2 * Math.PI * t)
+            let sampleForSound;
+            switch(selectedWave) { 
+                case waves.SIN:
+                    sampleForSound = Math.sin(sounds[i].freq * 2 * Math.PI * t);
+                    break;
+                case waves.SAWTOOTH:
+                    sampleForSound = fmod(sounds[i].freq * t, 1) * 2 - 1;
+                    break;
+                case waves.TRIANGLE:
+                    sampleForSound = Math.abs(fmod(sounds[i].freq * t, 1)-0.5) * 4 - 1;
+                    break;
+                case waves.SQUARE:
+                    sampleForSound = Math.round(fmod(sounds[i].freq * t, 1)) * 2 - 1;
+                    break;
+            }
             if (sounds[i].isOn) {
                 if (sounds[i].volume < 1)
                     sounds[i].volume += 0.001
@@ -30,7 +52,7 @@ function scheduleBuffer(time) {
                 if (sounds[i].volume > 0)
                     sounds[i].volume -= 0.001
             }
-            sample += sinWaveAtT * sounds[i].volume
+            sample += sampleForSound * sounds[i].volume
         }
         data[i] = sample
         t += dt;
@@ -39,6 +61,10 @@ function scheduleBuffer(time) {
     buffSource.buffer = buffer;
     buffSource.connect(audioContext.destination);
     buffSource.start(time);
+}
+
+function fmod(numer, denom) {
+    return numer - Math.trunc(numer/denom) * denom
 }
 
 class Sound {
@@ -71,6 +97,13 @@ window.onload = init;
 function init() {
     document.addEventListener("keydown", updateKeys, false);
     document.addEventListener("keyup", updateKeys, false);
+
+    var radios = document.getElementsByName("wave");
+    for(let i = 0; i < radios.length; i++) {
+        radios[i].onclick = function() {
+            selectedWave = this.value;
+        }
+    }
 
     timerWorker = new Worker("js/synthworker.js");
 
