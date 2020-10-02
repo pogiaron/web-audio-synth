@@ -1,13 +1,35 @@
 <!DOCTYPE html>
 <html>
+
 <head>
     <meta charset="UTF-8">
     <title>Web Audio Synth</title>
     <script src="js/synth.js"></script>
+    <script src="js/main.js"></script>
+    <style>
+        .settings {
+            display: inline-flex;
+            flex-direction: column;
+            width: 35%;
+            margin: 0 20px;
+        }
+
+        .settings div {
+            display: flex;
+            justify-self: center;
+            justify-content: space-between;
+        }
+    </style>
 </head>
+
 <body>
     <button onclick="start()">Start</button>
     <div id="keyboard">
     </div>
+    <div class="settings" id="toneColor">
+    </div>
+    <div class="settings" id="overTones">
+    </div>
 </body>
+
 </html>

@@ -1,182 +1,116 @@
-var audioContext = new AudioContext();
-
-var t = 0;
-var dt = 1.0 / audioContext.sampleRate;
-
-var nextBufferTime = 0.0;     // when the next buffer is due.
-var samples = audioContext.sampleRate / 50 // samples
-const bufferLength = 1 / 50 // buffer will last 1/50 sec
-const scheduleAheadTime = 0.08;    // How far ahead to schedule audio (sec)
-var timerWorker = null; // Web worker used to fire timer messages
-
-function nextBuffer() {
-    nextBufferTime += bufferLength;
-}
-
-function scheduleBuffer(time) {
-    const buffer = audioContext.createBuffer(1, samples, audioContext.sampleRate);
-    let data = buffer.getChannelData(0);
-    for (let i = 0; i < samples; i++) {
-        let sample = 0;
-        for (let i = 0; i < sounds.length; i++) {
-            let sinWaveAtT;
-            sinWaveAtT = Math.sin(sounds[i].freq * 2 * Math.PI * t)
-            if (sounds[i].isOn) {
-                if (sounds[i].volume < 1)
-                    sounds[i].volume += 0.001
-            } else {
-                if (sounds[i].volume < 0.001)
-                    sounds[i].volume = 0;
-                if (sounds[i].volume > 0)
-                    sounds[i].volume -= 0.001
-            }
-            sample += sinWaveAtT * sounds[i].volume
-        }
-        data[i] = sample
-        t += dt;
-    }
-    let buffSource = audioContext.createBufferSource();
-    buffSource.buffer = buffer;
-    buffSource.connect(audioContext.destination);
-    buffSource.start(time);
-}
-
 class Sound {
-    constructor(key, freq, volume, isOn) {
+    constructor(key, freq, volume, isOn, state) {
         this.key = key;
         this.freq = freq;
         this.volume = volume
         this.isOn = isOn
+        this.state = state;
     }
 }
 
-const sounds =
-    [new Sound("q", (440.0 * 2 ** (-9 * 1.0 / 12.0)), 0, false)
-        , new Sound("2", (440.0 * 2 ** (-8 * 1.0 / 12.0)), 0, false)
-        , new Sound("w", (440.0 * 2 ** (-7 * 1.0 / 12.0)), 0, false)
-        , new Sound("3", (440.0 * 2 ** (-6 * 1.0 / 12.0)), 0, false)
-        , new Sound("e", (440.0 * 2 ** (-5 * 1.0 / 12.0)), 0, false)
-        , new Sound("r", (440.0 * 2 ** (-4 * 1.0 / 12.0)), 0, false)
-        , new Sound("5", (440.0 * 2 ** (-3 * 1.0 / 12.0)), 0, false)
-        , new Sound("t", (440.0 * 2 ** (-2 * 1.0 / 12.0)), 0, false)
-        , new Sound("6", (440.0 * 2 ** (-1 * 1.0 / 12.0)), 0, false)
-        , new Sound("y", (440.0 * 2 ** (0 * 1.0 / 12.0)), 0, false)
-        , new Sound("7", (440.0 * 2 ** (1 * 1.0 / 12.0)), 0, false)
-        , new Sound("u", (440.0 * 2 ** (2 * 1.0 / 12.0)), 0, false)
-        , new Sound("i", (440.0 * 2 ** (3 * 1.0 / 12.0)), 0, false)
-    ]
+class ToneColor {
+    constructor(attackTime, decayTime, sustainTime, releaseTime, ampModFreq, ampModAmp, phaseModFreq, phaseModAmp) {
+        this.attackTime = attackTime;
+        this.decayTime = decayTime;
+        this.sustainTime = sustainTime;
+        this.releaseTime = releaseTime;
+        this.ampModFreq = ampModFreq;
+        this.ampModAmp = ampModAmp;
+        this.phaseModFreq = phaseModFreq;
+        this.phaseModAmp = phaseModAmp;
+    }
+}
 
-window.onload = init;
+class OverTone {
+    constructor(name, freqMultiplier, ratio) {
+        this.name = name;
+        this.freqMultiplier = freqMultiplier;
+        this.ratio = ratio;
+    }
+}
 
-function init() {
-    document.addEventListener("keydown", updateKeys, false);
-    document.addEventListener("keyup", updateKeys, false);
+const soundStates = {
+    SILENT: 'silent',
+    ATTACK: 'attack',
+    DECAY: 'decay',
+    SUSTAIN: 'sustain',
+    RELEASE: 'release'
+}
 
-    timerWorker = new Worker("js/synthworker.js");
+var t = 0;
 
-    timerWorker.onmessage = function (e) {
-        if (e.data == "tick") {
-            scheduler();
+function createBuffer(bufferLength, sounds, toneColor, overTones, dt) {
+    let data = new Array(bufferLength);
+    for (let i = 0; i < bufferLength; i++) {
+        let sample = 0;
+        // mix all sounds
+        for (let i = 0; i < sounds.length; i++) {
+            let sound = sounds[i];
+            let s = 0;
+            // adding up overtones
+            if(sound.state != soundStates.SILENT) {
+                s = addUpOvertones(sound, toneColor, overTones);
+            }
+            handleASDR(sound, toneColor); // setting sound volume and state
+            sample += s * sound.volume;
         }
-    };
-    window.requestAnimationFrame(() => draw(sounds));
-}
-
-function start() {
-    nextNoteTime = audioContext.currentTime;
-    timerWorker.postMessage("start");
-}
-
-function scheduler() {
-    // while there are notes that will need to play before the next interval, 
-    // schedule them and advance the pointer.
-    while (nextBufferTime < audioContext.currentTime + scheduleAheadTime) {
-        scheduleBuffer(nextBufferTime);
-        nextBuffer();
+        // amplitude modulation
+        sample *= (1 + toneColor.ampModAmp * Math.sin(toneColor.ampModFreq * 25 * 2 * Math.PI * t));
+        data[i] = sample;
+        t += dt;
     }
+    return data;
 }
 
-function updateKeys(event) {
-    for (let i = 0; i < sounds.length; i++) {
-        let key = event.key;
-        if (event.key == 'z')
-            key = 'y';
-        if (sounds[i].key == key) {
-            sounds[i].isOn = (event.type) == ("keydown")
+function addUpOvertones(sound, toneColor, overTones) {
+    let wave = 0;
+    for (let k = 0; k < overTones.length; k++) {
+        if (overTones[k].ratio != 0) {
+            wave += overTones[k].ratio *
+                Math.sin(
+                    overTones[k].freqMultiplier * sound.freq * 2 * Math.PI * t
+                    + 2 * toneColor.phaseModAmp
+                    * Math.sin(toneColor.phaseModFreq * 25 * 2 * Math.PI * t)
+                );
         }
     }
+    return wave;
 }
 
-// keyboard drawing
-function isKeyOn(key, sounds) {
-    for (let i = 0; i < sounds.length; i++) {
-        if (sounds[i].key == key)
-            return sounds[i].isOn;
+function handleASDR(sound, toneColor) {
+    switch (sound.state) {
+        case soundStates.SILENT:
+            if (sound.isOn) {
+                sound.state = soundStates.ATTACK;
+            }
+            break;
+        case soundStates.ATTACK:
+            sound.volume += 1.0 / (toneColor.attackTime + 0.01) * dt;
+            if (sound.volume > 1) {
+                sound.state = soundStates.DECAY;
+            }
+            if (!sound.isOn) {
+                sound.state = soundStates.RELEASE;
+            }
+            break;
+        case soundStates.DECAY:
+            sound.volume -= 1.0 / (toneColor.decayTime + 0.01) * dt;
+            if (sound.volume < toneColor.sustainTime)
+                sound.state = soundStates.SUSTAIN;
+            if (!sound.isOn)
+                sound.state = soundStates.RELEASE;
+            break;
+        case soundStates.SUSTAIN:
+            if (!sound.isOn) {
+                sound.state = soundStates.RELEASE;
+            }
+            break;
+        case soundStates.RELEASE:
+            sound.volume -= 1.0 / (toneColor.releaseTime + 0.01) * dt;
+            if (sound.volume < 0) {
+                sound.volume = 0;
+                sound.state = soundStates.SILENT;
+            }
+            break;
     }
-    return false;
 }
-
-var lastSounds;
-
-function draw(sounds) {
-    if (JSON.stringify(lastSounds) !== JSON.stringify(sounds) ) { // draw only if sounds has changed 
-        if (document.getElementById("svgKeyboard")) {
-            document.getElementById("svgKeyboard").remove();
-        }
-        document.getElementById("keyboard").
-            appendChild(drawKeyboard(sounds));
-    }
-    lastSounds = JSON.parse(JSON.stringify(sounds)); // deep copy
-    window.requestAnimationFrame(() => draw(sounds));
-}
-
-function drawKeyboard(sounds) {
-    var svgElem = createSvgElement("svg", { "width": 500, "height": 120, "viewBox": "0 0 500 120", "id": "svgKeyboard" })
-    let whiteKeys = "qwertyui";
-    for (let i = 0; i < whiteKeys.length; i++) {
-        svgElem.appendChild(whiteKey(i * 25, whiteKeys[i], isKeyOn(whiteKeys[i], sounds)));
-    }
-    let blackKeys = "234567";
-    for (let i = 0; i < blackKeys.length; i++) {
-        if (i == 2)
-            continue;
-        svgElem.appendChild(blackKey(20 + i * 25, blackKeys[i], isKeyOn(blackKeys[i], sounds)));
-    }
-    return svgElem;
-}
-
-function whiteKey(x, label, pressed) {
-    let width = 25
-    let height = 100;
-    let fill = pressed ? "#D7D7D7" : "white"
-    var g = createSvgElement("g", {});
-    var rect = createSvgElement("rect", { "x": x + width, "y": 10, "width": width, "height": height, "stroke": "black", "fill": fill })
-    var text = createSvgElement("text", { "x": x + width + 7, "y": 75 })
-    text.textContent = label
-    g.appendChild(rect);
-    g.appendChild(text);
-    return g;
-}
-
-function blackKey(x, label, pressed) {
-    let width = 20
-    let height = 45;
-    let fill = pressed ? "black" : "#363636"
-    var g = createSvgElement("g", {});
-    var rect = createSvgElement("rect", { "x": x + width, "y": 10, "width": width, "height": height, "stroke": "black", "fill": fill })
-    var text = createSvgElement("text", { "x": x + width + 5, "y": 40, "fill": "white" })
-    text.textContent = label
-    g.appendChild(rect);
-    g.appendChild(text);
-    return g;
-}
-
-
-function createSvgElement(svgElement, attributes) {
-    n = document.createElementNS("http://www.w3.org/2000/svg", svgElement);
-    for (var attribute in attributes)
-        n.setAttributeNS(null, attribute, attributes[attribute]);
-    return n
-}
-
-
